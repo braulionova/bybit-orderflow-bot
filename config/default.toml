@@ -1,0 +1,26 @@
+[bybit]
+testnet = true
+ws_url = "wss://stream-testnet.bybit.com/v5/public/linear"
+rest_url = "https://api-testnet.bybit.com"
+
+[trading]
+symbol = "BTCUSDT"
+risk_per_trade_pct = 0.002
+max_leverage = 5
+target_maker_ratio = 0.85
+min_time_between_trades_ms = 30000
+max_trades_per_hour = 40
+
+[risk]
+max_daily_drawdown_pct = -0.03
+max_consecutive_losses = 3
+max_latency_ms = 150
+max_spread_pct = 0.008
+min_liquidity_btc = 5.0
+kill_switch_enabled = true
+
+[performance]
+enable_metrics = true
+metrics_port = 9090
+log_level = "info"
+orderbook_depth = 50
