@@ -16,22 +16,25 @@ pub struct OrderbookLevel {
 
 pub struct Orderbook {
     pub symbol: String,
-    
+
     // Lock-free concurrent hashmaps
     bids: Arc<DashMap<Price, Quantity>>,
     asks: Arc<DashMap<Price, Quantity>>,
-    
+
     // Sorted views (updated periodically)
     sorted_bids: Arc<RwLock<Vec<OrderbookLevel>>>,
     sorted_asks: Arc<RwLock<Vec<OrderbookLevel>>>,
-    
+
     // Best bid/ask (atomic)
     best_bid: Arc<AtomicU64>,
     best_ask: Arc<AtomicU64>,
-    
+
     // Metrics
     last_update_time: Arc<AtomicU64>,
     update_count: Arc<AtomicU64>,
+
+    // Advanced metrics (Phase 2)
+    metrics: Arc<RwLock<super::metrics::OrderbookMetrics>>,
 }
 
 impl Orderbook {
@@ -46,6 +49,7 @@ impl Orderbook {
             best_ask: Arc::new(AtomicU64::new(u64::MAX)),
             last_update_time: Arc::new(AtomicU64::new(0)),
             update_count: Arc::new(AtomicU64::new(0)),
+            metrics: Arc::new(RwLock::new(super::metrics::OrderbookMetrics::new())),
         }
     }
     
@@ -260,6 +264,61 @@ impl Orderbook {
     /// Get update count
     pub fn update_count(&self) -> u64 {
         self.update_count.load(Ordering::Relaxed)
+    }
+
+    /// Get sorted bid and ask levels for advanced metrics
+    pub fn get_sorted_levels(&self, depth: usize) -> (Vec<(f64, f64)>, Vec<(f64, f64)>) {
+        let bids = self.sorted_bids.read();
+        let asks = self.sorted_asks.read();
+
+        let bid_levels: Vec<(f64, f64)> = bids.iter()
+            .take(depth)
+            .map(|level| (level.price.0, level.quantity.0))
+            .collect();
+
+        let ask_levels: Vec<(f64, f64)> = asks.iter()
+            .take(depth)
+            .map(|level| (level.price.0, level.quantity.0))
+            .collect();
+
+        (bid_levels, ask_levels)
+    }
+
+    /// Update advanced metrics (call after orderbook updates)
+    pub fn update_metrics(&self, depth_levels: &[usize], whale_threshold: f64) {
+        let (bid_levels, ask_levels) = self.get_sorted_levels(50);
+
+        if bid_levels.is_empty() || ask_levels.is_empty() {
+            return;
+        }
+
+        let mut metrics = self.metrics.write();
+
+        // Calculate total volumes
+        let bid_volume: f64 = bid_levels.iter().take(10).map(|(_, q)| q).sum();
+        let ask_volume: f64 = ask_levels.iter().take(10).map(|(_, q)| q).sum();
+
+        // Add volume snapshot
+        metrics.add_snapshot(bid_volume, ask_volume);
+
+        // Update average order size
+        metrics.update_avg_order_size(&bid_levels);
+        metrics.update_avg_order_size(&ask_levels);
+
+        // Detect whales
+        metrics.detect_whales(&bid_levels, &ask_levels, whale_threshold);
+
+        // Calculate multi-level imbalance
+        metrics.calculate_multi_level_imbalance(&bid_levels, &ask_levels, depth_levels);
+
+        // Calculate pressure
+        let (best_bid, best_ask) = self.best_bid_ask();
+        metrics.calculate_pressure(best_bid, best_ask);
+    }
+
+    /// Get advanced metrics
+    pub fn get_metrics(&self) -> parking_lot::RwLockReadGuard<super::metrics::OrderbookMetrics> {
+        self.metrics.read()
     }
 }
 

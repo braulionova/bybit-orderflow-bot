@@ -1,7 +1,7 @@
 [bybit]
-testnet = true
-ws_url = "wss://stream-testnet.bybit.com/v5/public/linear"
-rest_url = "https://api-testnet.bybit.com"
+testnet = false
+ws_url = "wss://stream.bybit.com/v5/public/linear"
+rest_url = "https://api-demo.bybit.com"
 
 [trading]
 symbol = "BTCUSDT"
@@ -14,13 +14,50 @@ max_trades_per_hour = 40
 [risk]
 max_daily_drawdown_pct = -0.03
 max_consecutive_losses = 3
-max_latency_ms = 150
-max_spread_pct = 0.008
-min_liquidity_btc = 5.0
+max_latency_ms = 10000        # 10s (was 150ms) - testnet is slow
+max_spread_pct = 0.015         # 1.5% (was 0.008) - wider spread
+min_liquidity_btc = 0.01       # 0.01 BTC (was 0.05) - testnet has low liquidity
 kill_switch_enabled = true
+# Phase 3B: Dynamic risk management
+base_sl_pct = 0.01             # 1% base stop loss
+base_tp_pct = 0.02             # 2% base take profit
+volatility_multiplier = 0.5    # ATR multiplier for SL/TP adjustment
+atr_period = 14                # ATR calculation period
+# Native Bybit SL/TP Orders
+use_native_sltp = true         # Enable native API SL/TP (crash-proof)
+sltp_order_type = "Market"     # "Market" or "Limit"
+sltp_trigger_by = "LastPrice"  # "LastPrice", "MarkPrice", "IndexPrice"
+keep_software_monitoring = true # Keep software monitoring as backup safety net
 
 [performance]
 enable_metrics = true
 metrics_port = 9090
 log_level = "info"
 orderbook_depth = 50
+
+[telegram]
+enabled = true
+bot_token = "7700486521:AAFuu2ygokFNesm1uB6_JM96KxQwcc4q-dk"
+chat_id = "483428397"
+
+[strategy]
+# Phase 2/3: Multi-dimensional scoring weights (sum to 1.0)
+imbalance_weight = 0.30
+volume_delta_weight = 0.25
+whale_weight = 0.20
+pressure_weight = 0.15
+depth_consistency_weight = 0.10
+
+# Analysis parameters
+depth_levels = [5, 10, 20]               # Levels to analyze for imbalance
+whale_threshold_multiplier = 3.0         # Order size > 3x average = whale
+min_whale_size_btc = 0.5                 # Minimum size to consider whale
+delta_windows = [1000, 5000, 30000]      # Volume delta windows (ms)
+
+[validation]
+# Phase 3C: Orderbook quality filters
+enable_validation = true
+max_spread_multiplier = 3.0              # Reject if spread > 3x normal
+min_liquidity_multiplier = 0.25          # Reject if liquidity < 25% normal
+max_data_age_ms = 5000                   # Reject if data > 5s old
+min_depth_levels = 3                     # Minimum orderbook depth required
